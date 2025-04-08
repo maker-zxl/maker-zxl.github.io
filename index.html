@@ -1,18 +1,9 @@
 <!DOCTYPE html>
-<!--
-Created using JS Bin
-http://jsbin.com
-
-Copyright (c) 2025 by anonymous (http://jsbin.com/xamegalisu/1/edit)
-
-Released under the MIT license: http://jsbin.mit-license.org
--->
-<meta name="robots" content="noindex">
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>外箱尺寸计算器</title>
+    <title>外箱尺寸计算器（外层缓冲）</title>
     <style>
         * {
             box-sizing: border-box;
@@ -116,11 +107,18 @@ Released under the MIT license: http://jsbin.mit-license.org
             color: #7f8c8d;
             font-size: 14px;
         }
+        
+        .notice {
+            color: #95a5a6;
+            font-size: 14px;
+            margin-top: 15px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>外箱尺寸计算器</h1>
+        <h1>外箱尺寸计算器（外层缓冲）</h1>
         
         <div class="form-group">
             <label for="innerLength">内盒长度 (mm)</label>
@@ -143,7 +141,7 @@ Released under the MIT license: http://jsbin.mit-license.org
         </div>
         
         <div class="form-group">
-            <label for="padding">缓冲材料厚度 (mm)</label>
+            <label for="padding">外层缓冲材料厚度 (mm)</label>
             <input type="number" id="padding" placeholder="输入缓冲材料厚度" min="0" value="5">
         </div>
         
@@ -177,6 +175,8 @@ Released under the MIT license: http://jsbin.mit-license.org
                 <span class="unit">mm³</span>
             </div>
         </div>
+        
+        <div class="notice">* 缓冲材料仅添加在外箱内壁四周</div>
     </div>
 
     <script>
@@ -196,10 +196,10 @@ Released under the MIT license: http://jsbin.mit-license.org
             // 计算最佳排列方式
             const bestArrangement = calculateBestArrangement(innerLength, innerWidth, innerHeight, quantity);
             
-            // 计算外箱尺寸（加上缓冲材料）
-            const outerLength = bestArrangement.length * innerLength + (bestArrangement.length + 1) * padding;
-            const outerWidth = bestArrangement.width * innerWidth + (bestArrangement.width + 1) * padding;
-            const outerHeight = bestArrangement.height * innerHeight + (bestArrangement.height + 1) * padding;
+            // 计算外箱尺寸（仅外层添加缓冲）
+            const outerLength = bestArrangement.length * innerLength + 2 * padding;
+            const outerWidth = bestArrangement.width * innerWidth + 2 * padding;
+            const outerHeight = bestArrangement.height * innerHeight + 2 * padding;
             
             // 计算总表面积和总体积
             const totalArea = 2 * (outerLength * outerWidth + outerLength * outerHeight + outerWidth * outerHeight);
@@ -217,9 +217,15 @@ Released under the MIT license: http://jsbin.mit-license.org
         
         // 计算最佳排列方式（使外箱尽可能接近立方体）
         function calculateBestArrangement(length, width, height, quantity) {
-            let bestArrangement = { length: 1, width: 1, height: 1, score: Infinity };
+            let bestArrangement = { 
+                length: 1, 
+                width: 1, 
+                height: 1, 
+                volume: Infinity,
+                aspectRatio: Infinity
+            };
             
-            // 尝试所有可能的排列组合
+            // 遍历所有可能的排列组合
             for (let l = 1; l <= quantity; l++) {
                 if (quantity % l !== 0) continue;
                 
@@ -229,17 +235,27 @@ Released under the MIT license: http://jsbin.mit-license.org
                     
                     const h = remaining / w;
                     
-                    // 计算外箱尺寸比例（越接近1:1:1越好）
-                    const outerLength = l * length;
-                    const outerWidth = w * width;
-                    const outerHeight = h * height;
+                    // 计算三维尺寸
+                    const dims = [
+                        l * length,
+                        w * width,
+                        h * height
+                    ].sort((a, b) => b - a); // 降序排列
                     
-                    const maxDim = Math.max(outerLength, outerWidth, outerHeight);
-                    const minDim = Math.min(outerLength, outerWidth, outerHeight);
-                    const score = maxDim / minDim; // 比例越接近1越好
+                    // 计算评估指标（体积优先，长宽高比例次之）
+                    const volume = dims[0] * dims[1] * dims[2];
+                    const aspectRatio = dims[0] / dims[2]; // 最大尺寸比
                     
-                    if (score < bestArrangement.score) {
-                        bestArrangement = { length: l, width: w, height: h, score: score };
+                    // 选择最优方案
+                    if (volume < bestArrangement.volume || 
+                       (volume === bestArrangement.volume && aspectRatio < bestArrangement.aspectRatio)) {
+                        bestArrangement = {
+                            length: l,
+                            width: w,
+                            height: h,
+                            volume: volume,
+                            aspectRatio: aspectRatio
+                        };
                     }
                 }
             }

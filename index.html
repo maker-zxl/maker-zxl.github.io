@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>外箱尺寸</title>
+    <title>外箱尺寸计算器（最终版）</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -18,7 +18,6 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.08);
             border: 1px solid #e0e6ed;
         }
-        /* 标题容器样式 */
         .title-container {
             display: flex;
             justify-content: space-between;
@@ -144,10 +143,6 @@
             <label>厚度补偿 (mm):</label>
             <input type="number" id="padding" step="0.5" min="0" value="7.5">
         </div>
-        <div class="input-group">
-            <label>允许小盒旋转:</label>
-            <input type="checkbox" id="rotation" checked>
-        </div>
         <button onclick="calculate()">立即计算</button>
         <div id="result"></div>
     </div>
@@ -159,60 +154,106 @@
             const h = parseFloat(document.getElementById('height').value);
             const quantity = parseInt(document.getElementById('quantity').value);
             const padding = parseFloat(document.getElementById('padding').value);
-            const allowRotation = document.getElementById('rotation').checked;
 
-            const result = calculateOptimalBox(l, w, h, quantity, padding, allowRotation);
+            const result = calculateOptimalBox(l, w, h, quantity, padding);
             const resultDiv = document.getElementById('result');
-            resultDiv.innerHTML = result 
-                ? `<p><strong>外箱尺寸：</strong>${result.dimensions.join(" × ")} mm</p>
-                   <p><strong>表面积：</strong>${result.surfaceArea.toLocaleString()} mm²</p>
-                   <p><strong>体积：</strong>${result.volume.toLocaleString()} mm³</p>
-                   <p><strong>排列方式：</strong>每行 ${result.layout[0]} 个，每列 ${result.layout[1]} 个，${result.layout[2]} 层</p>
-                   <p><strong>摆放方向：</strong>长边 ${result.orientation[0]}mm → 宽边 ${result.orientation[1]}mm → 高边 ${result.orientation[2]}mm</p>`
-                : "<p>请输入有效参数！</p>";
+            
+            if (result) {
+                resultDiv.innerHTML = formatResult(result);
+            } else {
+                resultDiv.innerHTML = "<p style='color:#e74c3c'>无法找到有效排列方案，请调整参数！</p>";
+            }
         }
 
-        function calculateOptimalBox(innerL, innerW, innerH, quantity, padding, allowRotation) {
-            let best = null;
-            const orientations = allowRotation ? getOrientations(innerL, innerW, innerH) : [[innerL, innerW, innerH]];
+        function formatResult(result) {
+            const baseAreas = [
+                result.dimensions[0] * result.dimensions[1],
+                result.dimensions[0] * result.dimensions[2],
+                result.dimensions[1] * result.dimensions[2]
+            ];
             
-            for (const [l, w, h] of orientations) {
-                const maxDimension = Math.ceil(Math.cbrt(quantity));
-                for (let x = 1; x <= maxDimension; x++) {
-                    for (let y = 1; y <= Math.ceil(quantity/x); y++) {
-                        const z = Math.ceil(quantity / (x * y));
-                        if (x * y * z < quantity) continue;
-                        
-                        const boxL = l * x + 2 * padding;
-                        const boxW = w * y + 2 * padding;
-                        const boxH = h * z + 2 * padding;
-                        
-                        const surfaceArea = 2 * (boxL*boxW + boxL*boxH + boxW*boxH);
-                        const volume = boxL * boxW * boxH;
-                        
-                        if (!best || 
-                           (surfaceArea < best.surfaceArea) ||
-                           (surfaceArea === best.surfaceArea && volume < best.volume)) {
-                            best = {
-                                dimensions: [boxL.toFixed(1), boxW.toFixed(1), boxH.toFixed(1)],
-                                surfaceArea,
-                                volume,
-                                layout: [x, y, z],
-                                orientation: [l, w, h]
-                            };
-                        }
-                    }
-                }
+            const maxIndex = baseAreas.indexOf(Math.max(...baseAreas));
+            
+            let [L, W, H] = result.dimensions;
+            let [X, Y, Z] = result.layout;
+            let [oL, oW, oH] = result.orientation;
+
+            switch(maxIndex) {
+                case 1:
+                    [L, W, H] = [L, H, W];
+                    [X, Y, Z] = [X, Z, Y];
+                    [oL, oW, oH] = [oL, oH, oW];
+                    break;
+                case 2:
+                    [L, W, H] = [W, H, L];
+                    [X, Y, Z] = [Y, Z, X];
+                    [oL, oW, oH] = [oW, oH, oL];
+                    break;
             }
+
+            return `
+                <p><strong>外箱尺寸：</strong>${L} × ${W} × ${H} mm</p>
+                <p><strong>底面积：</strong>${(L * W).toLocaleString()} mm²</p>
+                <p><strong>体积：</strong>${result.volume.toLocaleString()} mm³</p>
+                <p><strong>排列方式：</strong>${X}行 × ${Y}列 × ${Z}层</p>
+                <p><strong>每层数量：</strong>${X * Y} 个（共 ${Z} 层）</p>
+                <p><strong>原始方向：</strong>长${oL}mm × 宽${oW}mm × 高${oH}mm</p>`;
+        }
+
+        function calculateOptimalBox(l, w, h, quantity, padding) {
+            let best = null;
+            const orientations = getUniqueOrientations(l, w, h);
+            
+            orientations.forEach(([currentL, currentW, currentH]) => {
+                getValidCombinations(quantity).forEach(([x, y, z]) => {
+                    const boxL = currentL * x + 2 * padding;
+                    const boxW = currentW * y + 2 * padding;
+                    const boxH = currentH * z + 2 * padding;
+                    
+                    const surfaceArea = 2 * (boxL*boxW + boxL*boxH + boxW*boxH);
+                    const volume = boxL * boxW * boxH;
+                    
+                    if (!best || surfaceArea < best.surfaceArea || 
+                       (surfaceArea === best.surfaceArea && volume < best.volume)) {
+                        best = {
+                            dimensions: [Number(boxL.toFixed(1)), Number(boxW.toFixed(1)), Number(boxH.toFixed(1))],
+                            surfaceArea: Math.round(surfaceArea),
+                            volume: Math.round(volume),
+                            layout: [x, y, z],
+                            orientation: [currentL, currentW, currentH]
+                        };
+                    }
+                });
+            });
             return best;
         }
 
-        function getOrientations(l, w, h) {
-            return [
-                [l, w, h], [l, h, w],
-                [w, l, h], [w, h, l],
-                [h, l, w], [h, w, l]
-            ];
+        function getUniqueOrientations(l, w, h) {
+            const unique = new Set();
+            [[l,w,h],[l,h,w],[w,l,h],[w,h,l],[h,l,w],[h,w,l]].forEach(arr => {
+                unique.add(arr.join('|'));
+            });
+            return Array.from(unique).map(str => str.split('|').map(Number));
+        }
+
+        function getValidCombinations(n) {
+            const combinations = new Set();
+            const max = Math.ceil(Math.cbrt(n)) * 2;
+            
+            for (let x = 1; x <= max; x++) {
+                if (n % x !== 0) continue;
+                const remaining = n / x;
+                
+                for (let y = 1; y <= Math.ceil(Math.sqrt(remaining)) * 2; y++) {
+                    if (remaining % y !== 0) continue;
+                    const z = remaining / y;
+                    
+                    [[x,y,z],[x,z,y],[y,x,z],[y,z,x],[z,x,y],[z,y,x]].forEach(arr => {
+                        combinations.add(arr.join('|'));
+                    });
+                }
+            }
+            return Array.from(combinations).map(str => str.split('|').map(Number));
         }
     </script>
 </body>

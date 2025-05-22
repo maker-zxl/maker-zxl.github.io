@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>外箱尺寸计算器（最终版）</title>
+    <title>外箱尺寸计算器</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -166,38 +166,15 @@
         }
 
         function formatResult(result) {
-            const baseAreas = [
-                result.dimensions[0] * result.dimensions[1],
-                result.dimensions[0] * result.dimensions[2],
-                result.dimensions[1] * result.dimensions[2]
-            ];
-            
-            const maxIndex = baseAreas.indexOf(Math.max(...baseAreas));
-            
-            let [L, W, H] = result.dimensions;
-            let [X, Y, Z] = result.layout;
-            let [oL, oW, oH] = result.orientation;
-
-            switch(maxIndex) {
-                case 1:
-                    [L, W, H] = [L, H, W];
-                    [X, Y, Z] = [X, Z, Y];
-                    [oL, oW, oH] = [oL, oH, oW];
-                    break;
-                case 2:
-                    [L, W, H] = [W, H, L];
-                    [X, Y, Z] = [Y, Z, X];
-                    [oL, oW, oH] = [oW, oH, oL];
-                    break;
-            }
-
+            // 正确显示外箱尺寸方向
+            const [L, W, H] = result.dimensions;
             return `
                 <p><strong>外箱尺寸：</strong>${L} × ${W} × ${H} mm</p>
-                <p><strong>底面积：</strong>${(L * W).toLocaleString()} mm²</p>
+                <p><strong>外箱表面积：</strong>${result.surfaceArea.toLocaleString()} mm²</p>
                 <p><strong>体积：</strong>${result.volume.toLocaleString()} mm³</p>
-                <p><strong>排列方式：</strong>${X}行 × ${Y}列 × ${Z}层</p>
-                <p><strong>每层数量：</strong>${X * Y} 个（共 ${Z} 层）</p>
-                <p><strong>原始方向：</strong>长${oL}mm × 宽${oW}mm × 高${oH}mm</p>`;
+                <p><strong>排列方式：</strong>${result.layout[0]}行 × ${result.layout[1]}列 × ${result.layout[2]}层</p>
+                <p><strong>每层数量：</strong>${result.layout[0] * result.layout[1]} 个（共 ${result.layout[2]} 层）</p>
+                <p><strong>原始方向：</strong>长${result.orientation[0]}mm × 宽${result.orientation[1]}mm × 高${result.orientation[2]}mm</p>`;
         }
 
         function calculateOptimalBox(l, w, h, quantity, padding) {
@@ -210,6 +187,7 @@
                     const boxW = currentW * y + 2 * padding;
                     const boxH = currentH * z + 2 * padding;
                     
+                    // 正确计算表面积：2(LW + LH + WH)
                     const surfaceArea = 2 * (boxL*boxW + boxL*boxH + boxW*boxH);
                     const volume = boxL * boxW * boxH;
                     
